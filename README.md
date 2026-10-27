@@ -1,0 +1,142 @@
+# 29º Troféu Alexandre Pussieldi (2025) – Banco de Dados
+
+**Alunos:** Daniel Lins, Celso Hector e Nicolas Araujo
+
+## Arquivos
+| Arquivo | O que é |
+|---|---|
+| `der_pussieldi.mmd` | Q1 – Diagrama ER em Mermaid, com comentários |
+| `der_pussieldi.png` | Imagem do diagrama |
+| `trofeu_pussieldi.sql` | Q2 – Tabelas, dados reais do evento e as funções `sp_quatro_de_migalhas` e `sp_atlas_e_cubos` |
+| `trabalho_pussieldi.pdf` | Justificativas técnicas, log da IA e prints dos resultados |
+
+## Diagrama
+```mermaid
+erDiagram
+
+    %% Um evento é dividido em 3 etapas (Art. 7: qui, sex e sáb de manhã).
+    %% Etapa não existe sem evento -> identificador, e todo evento tem etapas -> }|
+    EVENTO ||--|{ ETAPA : "dividido em"
+
+    %% Cada prova acontece em uma etapa; algumas etapas poderiam ficar sem prova -> }o
+    ETAPA ||..o{ PROVA : "agenda"
+
+    %% Categoria é definida por ANO DE NASCIMENTO e por temporada (CBDA).
+    %% Fica numa tabela própria em vez de idade fixa no código.
+    CATEGORIA ||..o{ PROVA : "classifica"
+
+    %% No festival cada atleta nada por um único clube
+    CLUBE ||..o{ ATLETA : "representa"
+    CLUBE ||..o{ EQUIPE_REVEZAMENTO : "inscreve"
+
+    %% INSCRICAO resolve o N:N entre PROVA e quem nada. O clube inscreve
+    %% antes da prova (serie, raia e balizamento saem daqui).
+    %% Sem prova não há inscrição -> identificador (ON DELETE CASCADE)
+    PROVA ||--o{ INSCRICAO : "recebe"
+
+    %% Uma inscrição é de um atleta (individual) OU de uma equipe
+    %% (revezamento), nunca dos dois -> os dois lados ficam |o (FK opcional + CHECK)
+    ATLETA |o..o{ INSCRICAO : "se inscreve"
+    EQUIPE_REVEZAMENTO |o..o{ INSCRICAO : "se inscreve"
+
+    %% Nem toda inscrição vira resultado: quem faltou fica sem -> |o (0 ou 1).
+    %% Resultado não existe sem inscrição -> identificador
+    INSCRICAO ||--o| RESULTADO : "gera"
+
+    %% Pontos NÃO ficam gravados no resultado: saem da tabela do Art. 17
+    %% pela colocação (do 17º em diante não pontua, por isso não há FK)
+    TABELA_PONTUACAO |o..o{ RESULTADO : "pontua"
+
+    EVENTO {
+        int    id PK
+        string nome UK "UK composta com edicao"
+        int    edicao UK
+        string cidade
+        string uf
+        date   data_inicio
+        date   data_fim
+    }
+
+    ETAPA {
+        int  id PK
+        int  evento_id FK, UK "UK (evento_id, numero)"
+        int  numero UK "1 a 3"
+        date data
+    }
+
+    CATEGORIA {
+        int    id PK
+        string sigla UK "PM, M1, M2 - UK (sigla, temporada)"
+        string descricao
+        int    temporada UK "ano da competicao"
+        int    ano_nasc_min "2025: PM 2017, M1 2016, M2 2015"
+        int    ano_nasc_max "2025: PM 2018, M1 2016, M2 2015"
+    }
+
+    CLUBE {
+        int    id PK
+        string sigla UK
+        string nome
+    }
+
+    ATLETA {
+        int    id PK
+        string nome UK "UK (nome, ano_nascimento)"
+        int    ano_nascimento UK "a categoria sai daqui, idade nao e gravada"
+        string sexo "F ou M"
+        int    clube_id FK
+    }
+
+    EQUIPE_REVEZAMENTO {
+        int    id PK
+        string nome UK "ex.: AABB RECIFE A"
+        int    clube_id FK
+    }
+
+    PROVA {
+        int     id PK
+        int     etapa_id FK
+        int     categoria_id FK
+        int     numero UK "numero da prova no programa"
+        int     distancia "50, 100, 200"
+        string  estilo "livre, costas, peito, borboleta, medley"
+        string  genero "F, M ou X (misto)"
+        string  tipo "I individual, R revezamento"
+        boolean realizada "6 provas sem inscritos"
+    }
+
+    INSCRICAO {
+        int     id PK
+        int     prova_id FK, UK "UK (prova_id, serie, raia)"
+        int     atleta_id FK "nulo no revezamento"
+        int     equipe_id FK "nulo na individual"
+        int     serie UK
+        int     raia UK "1 a 8"
+        decimal tempo_balizamento "segundos"
+        decimal valor "R$ 40 individual, R$ 160 revezamento (Art. 13)"
+    }
+
+    RESULTADO {
+        int     id PK
+        int     inscricao_id FK, UK "uma inscricao, no maximo um resultado"
+        int     colocacao "nula se DQ"
+        decimal tempo "segundos, ex.: 34.03"
+        int     indice_tecnico
+        string  status "A valido, D desclassificado"
+    }
+
+    TABELA_PONTUACAO {
+        int colocacao PK "1 a 16"
+        int pontos "25, 22, 20 ... 1 (revezamento x2)"
+    }
+```
+
+## Como rodar (PostgreSQL)
+```bash
+createdb pussieldi
+psql -d pussieldi -f trofeu_pussieldi.sql
+psql -d pussieldi -c "SELECT * FROM sp_quatro_de_migalhas(1);"
+psql -d pussieldi -c "SELECT * FROM sp_atlas_e_cubos(1, 'AABB-RECIFE');"
+```
+
+Fonte dos dados: resultados oficiais do evento publicados na FASE Aquática.
